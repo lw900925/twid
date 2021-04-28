@@ -21,6 +21,10 @@ gradlew clean build -x test
 
 构建完成后，会在build/libs目录下生成app.jar文件
 
+### 下载后运行
+
+请到[这里](https://github.com/lw900925/twitterd/releases)下载最新的工具包app.jar后运行。
+
 ### 运行
 
 执行如下命令运行
