@@ -1,0 +1,53 @@
+{
+  "groups": [
+    {
+      "name": "app",
+      "type": "io.lw900925.download.app.AppProperties",
+      "sourceType": "io.lw900925.download.app.AppProperties"
+    },
+    {
+      "name": "app.proxy",
+      "type": "io.lw900925.download.app.AppProperties$Proxy",
+      "sourceType": "io.lw900925.download.app.AppProperties",
+      "sourceMethod": "getProxy()"
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.access-token",
+      "type": "java.lang.String",
+      "sourceType": "io.lw900925.download.app.AppProperties"
+    },
+    {
+      "name": "app.base-url",
+      "type": "java.lang.String",
+      "sourceType": "io.lw900925.download.app.AppProperties"
+    },
+    {
+      "name": "app.count",
+      "type": "java.lang.String",
+      "sourceType": "io.lw900925.download.app.AppProperties"
+    },
+    {
+      "name": "app.media-download-path",
+      "type": "java.lang.String",
+      "sourceType": "io.lw900925.download.app.AppProperties"
+    },
+    {
+      "name": "app.proxy.host",
+      "type": "java.lang.String",
+      "sourceType": "io.lw900925.download.app.AppProperties$Proxy"
+    },
+    {
+      "name": "app.proxy.port",
+      "type": "java.lang.Integer",
+      "sourceType": "io.lw900925.download.app.AppProperties$Proxy"
+    },
+    {
+      "name": "app.screen-name",
+      "type": "java.lang.String",
+      "sourceType": "io.lw900925.download.app.AppProperties"
+    }
+  ],
+  "hints": []
+}
