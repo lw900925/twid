@@ -1,12 +1,12 @@
 package io.lw900925.download.app;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.gson.*;
-import okhttp3.*;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.apache.commons.lang3.time.DateUtils;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +22,6 @@ import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 /**
@@ -43,7 +42,7 @@ public class AppRunner implements CommandLineRunner {
     private Gson gson;
 
     @Override
-    public void run(String... args) throws Exception {
+    public void run(String... args) {
         String screenName = appProperties.getScreenName();
 
         // step1.获取所有推文
@@ -53,7 +52,7 @@ public class AppRunner implements CommandLineRunner {
         Map<String, List<String>> mediaUrls = extractMediaUrl(userTimeline);
 
         // step3.下载媒体文件
-        JsonObject userInfo = userTimeline.keySet().stream().findFirst().orElseThrow(() -> new NullPointerException(String.format("%s用户信息确实", screenName)));
+        JsonObject userInfo = userTimeline.keySet().stream().findFirst().orElseThrow(() -> new NullPointerException(String.format("%s用户信息缺失", screenName)));
         downloadMedia(userInfo, mediaUrls);
     }
 
@@ -282,7 +281,7 @@ public class AppRunner implements CommandLineRunner {
                             // 文件路径规则：用户名 / 推文创建时间 + 文件名 + 文件后缀
                             String filename = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("?"));
                             filename = key + "_" + filename;
-                            String path = appProperties.getMediaDownloadPath() + File.separator + userName + File.separator + filename;
+                            String path = appProperties.getMediaDownloadPath() + File.separator + userName + "@" + screenName + File.separator + filename;
 
                             // 创建目录并保存文件
                             Files.createDirectories(Paths.get(path).getParent());
