@@ -135,6 +135,7 @@ public class AppRunner implements CommandLineRunner {
             return mediaUrls;
         }
 
+        LOGGER.debug("正在提取推文中的媒体链接，请稍后...");
         userTimeline.forEach((key, value) -> {
             if (value != null && value.size() > 0) {
                 value.forEach(timelineJsonElement -> {
@@ -178,6 +179,7 @@ public class AppRunner implements CommandLineRunner {
             }
         });
 
+        LOGGER.debug("提取完毕，总共有{}个媒体", mediaUrls.values().stream().mapToLong(List::size).sum());
 
         return mediaUrls;
     }
