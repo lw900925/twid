@@ -1,4 +1,4 @@
-package io.lw900925.download.app;
+package io.lw900925.app;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

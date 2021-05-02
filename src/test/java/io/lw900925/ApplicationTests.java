@@ -1,4 +1,4 @@
-package io.lw900925.download;
+package io.lw900925;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

@@ -12,6 +12,7 @@ app:
     host: 127.0.0.1
     port: 7890
   access-token:
-  screen-name:
   count: 200
-  media-download-path: ${user.dir}
+  increment: true
+  users-file-path: ${user.dir}/config/users.txt
+  media-download-path: ${user.dir}/downloads
