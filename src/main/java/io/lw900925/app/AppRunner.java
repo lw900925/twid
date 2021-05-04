@@ -104,7 +104,7 @@ public class AppRunner implements CommandLineRunner {
         params.put("exclude_replies", "true");
         // 如果是增量抓取，先读取data目录下该用户上次最新推文id
         String lastTimelineId = LAST_TIMELINE_ID.get(screenName);
-        if (StringUtils.isNotBlank(lastTimelineId)) {
+        if (StringUtils.isNotBlank(lastTimelineId) && appProperties.getIncrement()) {
             params.put("since_id", lastTimelineId);
         }
 
@@ -112,7 +112,7 @@ public class AppRunner implements CommandLineRunner {
         JsonArray timelines = JsonParser.parseString(jsonStr).getAsJsonArray();
         if (timelines == null || timelines.size() == 0) {
             LOGGER.debug("{} - 没有推文", screenName);
-            return userTimeline;
+            return null;
         }
 
         // step2.获取第一条数据，取用户信息，取用户所有推文数量
@@ -120,9 +120,15 @@ public class AppRunner implements CommandLineRunner {
         JsonObject user = firstTimeline.get("user").getAsJsonObject();
         int statusesCount = user.get("statuses_count").getAsInt();
         LOGGER.debug("{} - 总共有{}条推文", screenName, statusesCount);
+        LOGGER.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, 1, timelines.size());
 
         // 第一条推文ID设置为当前最新抓取timeline_id
         LAST_TIMELINE_ID.put(screenName, firstTimeline.get("id_str").getAsString());
+
+        // 如果当次抓取数量小于每次最大抓取量，直接返回
+//        if (timelines.size() < Integer.parseInt(appProperties.getCount())) {
+//            return MutablePair.of(user, timelines);
+//        }
 
         // step3.循环调用，获取所有timelines
         if (statusesCount > 0) {
@@ -144,8 +150,11 @@ public class AppRunner implements CommandLineRunner {
 
                 String rowJsonStr = httpGet(url, params);
                 JsonArray rowTimelines = JsonParser.parseString(rowJsonStr).getAsJsonArray();
-                // 如果当次请求没有获取到timeline，说明所有timeline已经获取完毕，提前结束吧
-                if (rowTimelines == null || rowTimelines.size() == 0) {
+
+                LOGGER.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, i + 1, rowTimelines.size());
+
+                // 如果没抓取到更多推文，提前结束
+                if (rowTimelines.size() <= 1) {
                     break;
                 }
 
@@ -322,7 +331,12 @@ public class AppRunner implements CommandLineRunner {
                         try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
 
                             // 文件路径规则：用户名 / 推文创建时间 + 文件名 + 文件后缀
-                            String filename = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("?"));
+                            String filename = "";
+                            if (StringUtils.contains(url, "?")) {
+                                filename = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("?"));
+                            } else {
+                                filename = url.substring(url.lastIndexOf("/") + 1);
+                            }
                             filename = key + "_" + filename;
                             String path = appProperties.getMediaDownloadPath() + File.separator + userName + "@" + screenName + File.separator + filename;
 
@@ -330,7 +344,10 @@ public class AppRunner implements CommandLineRunner {
                             Files.createDirectories(Paths.get(path).getParent());
                             Files.copy(inputStream, Paths.get(path));
 
-                            LOGGER.debug("{} - 第（{}/{}）个文件下载完成：{}", screenName, indexAI.incrementAndGet(), count, path);
+                            LOGGER.debug("{} - 第[{}/{}]个文件下载完成：{}", screenName, indexAI.incrementAndGet(), count, path);
+                        } catch (Exception e) {
+                            LOGGER.error("文件下载出错 - url: {}", url);
+                            LOGGER.error(e.getMessage(), e);
                         }
                     } else {
                         LOGGER.error("{} - 文件下载失败，status: {}, body: {}, URL：{}", screenName, response.code(), Objects.requireNonNull(response.body()).string(), url);
@@ -394,7 +411,11 @@ public class AppRunner implements CommandLineRunner {
             List<String> userTimelineIds = Files.readAllLines(path, StandardCharsets.UTF_8);
             if (!CollectionUtils.isEmpty(userTimelineIds)) {
                 // 按行读取
-                List<String[]> userTimelineIdMaps = userTimelineIds.stream().map(userTimelineId -> userTimelineId.split(",")).collect(Collectors.toList());
+                List<String[]> userTimelineIdMaps = userTimelineIds.stream()
+                        .distinct()
+                        .filter(StringUtils::isNotBlank)
+                        .map(userTimelineId -> userTimelineId.split(","))
+                        .collect(Collectors.toList());
                 userTimelineIdMaps.forEach(userTimelineIdMap -> {
                     LAST_TIMELINE_ID.put(userTimelineIdMap[0], userTimelineIdMap[1]);
                 });
@@ -409,10 +430,12 @@ public class AppRunner implements CommandLineRunner {
         // 推出前将当前抓取的最新timeline_id写回文件
         Path path = getLastTimelineIdFilePath();
 
-        List<String> lines = new ArrayList<>();
+        Set<String> lines = new TreeSet<>();
         // 将Map中的内容转为文件中的行
         LAST_TIMELINE_ID.forEach((key, value) -> {
-            lines.add(key + "," + value);
+            if (StringUtils.isNotBlank(key) && StringUtils.isNotBlank(value)) {
+                lines.add(key + "," + value);
+            }
         });
 
         try {
