@@ -102,6 +102,7 @@ public class AppRunner implements CommandLineRunner {
         params.put("screen_name", screenName);
         params.put("count", appProperties.getCount());
         params.put("exclude_replies", "true");
+        params.put("tweet_mode", "extended");
         // 如果是增量抓取，先读取data目录下该用户上次最新推文id
         String lastTimelineId = LAST_TIMELINE_ID.get(screenName);
         if (StringUtils.isNotBlank(lastTimelineId) && appProperties.getIncrement()) {
@@ -321,7 +322,10 @@ public class AppRunner implements CommandLineRunner {
         LOGGER.debug("{} - 开始下载媒体文件...", screenName);
 
         // 处理媒体文件URL，key是推文的创建日期，value是媒体文件URL集合
-        creationDateMediaUrl.forEach((key, value) -> {
+        creationDateMediaUrl.entrySet().stream().parallel().forEach(entry -> {
+            String key = entry.getKey();
+            List<String> value = entry.getValue();
+
             value.forEach(url -> {
                 Request request = new Request.Builder().url(url).get().build();
 
@@ -357,6 +361,7 @@ public class AppRunner implements CommandLineRunner {
                 }
             });
         });
+
     }
 
     /**
