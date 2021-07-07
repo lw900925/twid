@@ -19,10 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class FileCacheManager implements CacheManager {
@@ -73,9 +71,11 @@ public class FileCacheManager implements CacheManager {
             list.add(ImmutableMap.of(SCREEN_NAME, key, TIMELINE_ID, value));
         });
 
+        // 排序
         String jsonStr = gson.toJson(list);
 
         try {
+            Files.delete(cache);
             Files.write(cache, jsonStr.getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE_NEW);
         } catch (IOException e) {
             logger.error("缓存写入文件失败 - " + e.getMessage(), e);

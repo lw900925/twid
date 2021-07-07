@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StreamUtils;
 
 import javax.annotation.PostConstruct;
@@ -65,7 +66,7 @@ public class TwidRunner implements CommandLineRunner {
     @PostConstruct
     private void postConstruct() {
         try {
-            Files.readAllLines(Paths.get(properties.getList()));
+            LIST = Files.readAllLines(Paths.get(properties.getList()));
         } catch (IOException e) {
             logger.error("读取下载列表失败 - " + e.getMessage(), e);
         }
@@ -89,6 +90,8 @@ public class TwidRunner implements CommandLineRunner {
 
     public Map<String, Object> getTimelines(String screenName) {
         JsonObject user = getUserInfo(screenName);
+        screenName = user.get("screen_name").getAsString();
+
         // 判断该用户是否锁推
         if (user.get("protected").getAsBoolean()) {
             PROTECTED_USERS.add(user);
@@ -144,7 +147,7 @@ public class TwidRunner implements CommandLineRunner {
             logger.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, i + 1, pageTimelines.size());
 
             // 如果获取的分页内容为0，提前结束循环
-            if (pageTimelines.size() < 0) {
+            if (pageTimelines.size() <= 0) {
                 break;
             }
 
@@ -152,16 +155,20 @@ public class TwidRunner implements CommandLineRunner {
             timelines.addAll(pageTimelines);
         }
 
+        if (timelines.size() == 0) {
+            return null;
+        }
+
         // 最终结果集的数量可能和用户信息中获取的推文数量不相等，这里获取的timeline是包含用户转发的推文的，所以会多；
         // 也有可能他自己删掉了一些，就会变少
         logger.debug("{} - 所有timeline已经获取完毕，结果集中共包含{}条", screenName, timelines.size());
 
 
-        return ImmutableMap.<String, Object> builder()
-                .put(USER, user)
-                .put(TOP_TIMELINE, timelines.get(0).getAsJsonObject())
-                .put(TIMELINES, timelines)
-                .build();
+        Map<String, Object> map = new HashMap<>();
+        map.put(USER, user);
+        map.put(TOP_TIMELINE, timelines.get(0).getAsJsonObject());
+        map.put(TIMELINES, timelines);
+        return map;
     }
 
     public JsonObject getUserInfo(String screenName) {
@@ -251,6 +258,11 @@ public class TwidRunner implements CommandLineRunner {
 
     @SuppressWarnings("unchecked")
     public void download(Map<String, Object> map) {
+
+        if (map == null || ((JsonArray) map.get(TIMELINES)).size() == 0) {
+            return;
+        }
+
         JsonObject user = (JsonObject) map.get(USER);
         JsonObject topTimeline = (JsonObject) map.get(TOP_TIMELINE);
         Map<String, List<String>> mediaUrls = (Map<String, List<String>>) map.get(MEDIA_URLS);
@@ -314,6 +326,7 @@ public class TwidRunner implements CommandLineRunner {
         Path path = Paths.get(downloadPath.toString(), "_user_info.json");
         String jsonStr = gson.toJson(user);
         try  {
+            Files.createDirectories(path.getParent());
             Files.write(path, jsonStr.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             logger.error("用户信息写入失败 - " + e.getMessage(), e);
@@ -326,9 +339,11 @@ public class TwidRunner implements CommandLineRunner {
         cacheManager.save(TIMELINE_ID);
 
         // 锁推的用户
-        logger.debug("下列用户已锁推：");
-        PROTECTED_USERS.forEach(user -> {
-            logger.debug("{}({})", user.get("name").getAsString(), user.get("screen_name").getAsString());
-        });
+        if (!CollectionUtils.isEmpty(PROTECTED_USERS)) {
+            logger.debug("下列用户已锁推：");
+            PROTECTED_USERS.forEach(user -> {
+                logger.debug("{}({})", user.get("name").getAsString(), user.get("screen_name").getAsString());
+            });
+        }
     }
 }
