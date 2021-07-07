@@ -6,11 +6,11 @@
 
 ## 如何使用
 
-这个工具用Java语言编写，请先安装Java运行环境，不会的自己Baidu / Google一下，很简单。
+这个工具用Java语言编写，请先安装Java运行环境（Java Runtime Environment），不会的自己Baidu / Google一下，很简单。
 
 在使用之前，你需要准备以下几样东西：
 
-1. 访问Twitter API的Access Token，可以通过申请开发者账号获得，请确保申请的Token可以访问user_timeline接口的权限。
+1. 访问Twitter API的Access Token（可以用自己账号的Token，PC浏览器登录Twitter后按F12键，刷新一下页面，左侧栏出现请求，随便点开一个请求，可以看到请求头部Authorization，将里面的Beare Token拷贝出来）。
 2. 梯子工具（访问Twitter需要科学上网）。
 
 ### 1.从源码构建
@@ -44,7 +44,7 @@ java -jar app.jar
 ```text
 /config 配置文件目录
 /config/application.yml 一些功能的相关配置，详情参见附录
-/config/users.txt 要下载的twitter用户
+/config/users.txt 要下载的twitter用户screen_name，如果批量下载多个用户，每行放一个
 
 /data 下载工具运行产生的数据目录
 /data/last_user_timeline_id.txt 增量抓取产生的用户timeline id映射
@@ -62,7 +62,7 @@ start.bat Windows用户双击运行该文件
 2. 编辑`/config/users.txt`文件，填入要下载的推主用户名（注意是用户名，不是昵称，就是screen_name，浏览器地址栏后面那部分，比如https://twitter.com/lw900925 ，lw900925就是用户名），如果要下载多个推主，请每一行填一个。
 3. Windows双击运行`start.bat`，Linux / macOS在终端下执行`start.sh`文件即可启动下载，下载的媒体文件将会放在downloads目录下。
 4. 下载过程中如需停止，请按`Ctrl + C`键。
-
+5. 工具本身支持多线程下载，下载速度取决于你的带宽速率以及梯子的稳定性。
 
 ## 附录
 
@@ -71,7 +71,7 @@ start.bat Windows用户双击运行该文件
 ```yml
 spring:
   application:
-    name: twitterd
+    name: twid
 
 logging:
   level:
