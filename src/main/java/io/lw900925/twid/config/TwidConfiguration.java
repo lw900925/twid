@@ -1,8 +1,9 @@
-package io.lw900925.app;
+package io.lw900925.twid.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import okhttp3.ConnectionPool;
+import okhttp3.Credentials;
 import okhttp3.OkHttpClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -22,10 +23,10 @@ import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
 
 @SpringBootConfiguration
-public class AppConfiguration {
+public class TwidConfiguration {
 
     @Autowired
-    private AppProperties appProperties;
+    private TwidProperties properties;
 
     @Bean
     public X509TrustManager x509TrustManager() {
@@ -67,14 +68,26 @@ public class AppConfiguration {
 
     @Bean
     public OkHttpClient okHttpClient() {
-        return new OkHttpClient.Builder()
-                .sslSocketFactory(sslSocketFactory(), x509TrustManager())
-                .retryOnConnectionFailure(false)//是否开启缓存
-                .connectionPool(pool())//连接池
-                .connectTimeout(10L, TimeUnit.SECONDS)
-                .readTimeout(10L, TimeUnit.SECONDS)
-                .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(appProperties.getProxy().getHost(), appProperties.getProxy().getPort())))
-                .build();
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+        builder.sslSocketFactory(sslSocketFactory(), x509TrustManager());
+        builder.retryOnConnectionFailure(false); //是否开启缓存
+        builder.connectionPool(pool()); //连接池
+        builder.connectTimeout(10L, TimeUnit.SECONDS);
+        builder.readTimeout(10L, TimeUnit.SECONDS);
+        // 代理
+        TwidProperties.Twitter.Proxy proxy = properties.getTwitter().getProxy();
+        if (proxy != null) {
+            builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxy.getHost(), proxy.getPort())));
+            if (proxy.getUsername() != null && proxy.getPassword() != null) {
+                builder.proxyAuthenticator((route, response) -> {
+                    String credential = Credentials.basic(proxy.getUsername(), proxy.getPassword());
+                    return response.request().newBuilder()
+                            .header("Proxy-Authorization", credential)
+                            .build();
+                });
+            }
+        }
+        return builder.build();
     }
 
     @Bean

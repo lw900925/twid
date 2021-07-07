@@ -1,18 +1,19 @@
 spring:
   application:
-    name: twitterd
+    name: twid
 
 logging:
   level:
-    io.lw900925: debug
+    io.lw900925.twid: debug
 
-app:
-  base-url: https://api.twitter.com/1.1
-  proxy:
-    host: 127.0.0.1
-    port: 7890
-  access-token:
-  count: 200
-  increment: true
-  users-file-path: ${user.dir}/config/users.txt
-  media-download-path: ${user.dir}/downloads
+twi:
+  twitter:
+    api:
+      base-url: https://api.twitter.com/1.1
+      access-token:
+    proxy:
+      host: 127.0.0.1
+      port: 7890
+  list: ${user.dir}/config/list.txt
+  cache: ${user.dir}/cache/timeline_id.json
+  location: ${user.dir}/downloads
