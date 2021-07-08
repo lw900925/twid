@@ -1,6 +1,5 @@
 package io.lw900925.twid;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.gson.*;
 import io.lw900925.twid.cache.CacheManager;
 import io.lw900925.twid.config.TwidProperties;
@@ -19,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
-import org.springframework.util.StreamUtils;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -57,7 +55,7 @@ public class TwidRunner implements CommandLineRunner {
 
     private List<String> LIST = new ArrayList<>();
     private List<JsonObject> PROTECTED_USERS = new ArrayList<>();
-    private Map<String, String> TIMELINE_ID = new HashMap<>();
+    private Map<String, String> TIMELINE_ID = new TreeMap<>(String::compareTo);
     private Map<String, Extractor> MEDIA_EXTRACTOR = new HashMap<String, Extractor>() {{
         put("video", new VideoExtractor());
         put("photo", new PhotoExtractor());
@@ -129,8 +127,7 @@ public class TwidRunner implements CommandLineRunner {
 
         JsonArray timelines = new JsonArray();
         // 循环获取所有timeline
-        // 因为开始时候已经取过一次了，所以这里i=1，表示第二次获取
-        for (int i=0; i<page; i++) {
+        for (int i = 0; i < page; i++) {
 
             // 获取最后一个timeline，取id设为max_id
             // max_id相当于分页中的offset
@@ -325,7 +322,7 @@ public class TwidRunner implements CommandLineRunner {
         // 保存用户信息
         Path path = Paths.get(downloadPath.toString(), "_user_info.json");
         String jsonStr = gson.toJson(user);
-        try  {
+        try {
             Files.createDirectories(path.getParent());
             Files.write(path, jsonStr.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {

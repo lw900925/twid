@@ -3,6 +3,9 @@ package io.lw900925.twid.cache;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import io.lw900925.twid.config.TwidProperties;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -20,7 +23,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Component
 public class FileCacheManager implements CacheManager {
@@ -48,18 +50,19 @@ public class FileCacheManager implements CacheManager {
 
     @Override
     public Map<String, String> load() {
-        Map<String, String> map = new HashMap<>();
+        Map<String, String> map = new TreeMap<>(String::compareTo);
         try (InputStream inputStream = Files.newInputStream(cache)) {
             String jsonStr = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
             if (StringUtils.isNotBlank(jsonStr)) {
-                List<Map<String, Object>> list = gson.fromJson(jsonStr, new TypeToken<List<Map<String, Object>>>(){}.getType());
-                list.forEach(item -> {
-                    map.put(item.get(SCREEN_NAME).toString(), item.get(TIMELINE_ID).toString());
+                JsonArray timelineIds = JsonParser.parseString(jsonStr).getAsJsonArray();
+                timelineIds.forEach(timelineId -> {
+                    map.put(timelineId.getAsJsonObject().get(SCREEN_NAME).getAsString(), timelineId.getAsJsonObject().get(TIMELINE_ID).getAsString());
                 });
             }
         } catch (IOException e) {
             logger.error("读取缓存文件失败 - " + e.getMessage(), e);
         }
+
         return map;
     }
 
@@ -71,7 +74,6 @@ public class FileCacheManager implements CacheManager {
             list.add(ImmutableMap.of(SCREEN_NAME, key, TIMELINE_ID, value));
         });
 
-        // 排序
         String jsonStr = gson.toJson(list);
 
         try {
