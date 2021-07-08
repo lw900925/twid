@@ -324,6 +324,7 @@ public class TwidRunner implements CommandLineRunner {
         String jsonStr = gson.toJson(user);
         try {
             Files.createDirectories(path.getParent());
+            Files.deleteIfExists(path);
             Files.write(path, jsonStr.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             logger.error("用户信息写入失败 - " + e.getMessage(), e);
