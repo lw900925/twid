@@ -41,7 +41,7 @@ java -jar app.jar
 
 1. 解压twid.zip文件到任意目录。
 2. 编辑`/config/application.yml`文件，填入`access-token`。
-3. 编辑`/config/users.txt`文件，填入要下载的推主用户名（注意是用户名，不是昵称，就是screen_name，浏览器地址栏后面那部分，比如https://twitter.com/lw900925 ，lw900925就是用户名），如果要下载多个推主，请每一行填一个。
+3. 编辑`/config/list.txt`文件，填入要下载的推主用户名（注意是用户名，不是昵称，就是screen_name，浏览器地址栏后面那部分，比如https://twitter.com/lw900925 ，lw900925就是用户名），如果要下载多个推主，请每一行填一个。
 4. Windows双击运行`start.bat`，Linux / macOS在终端下执行`start.sh`文件即可启动下载，下载的媒体文件将会放在downloads目录下。
 5. 下载过程中如需停止，请按`Ctrl + C`键。
 6. 工具本身支持多线程下载，下载速度取决于你的带宽速率以及梯子的稳定性。
