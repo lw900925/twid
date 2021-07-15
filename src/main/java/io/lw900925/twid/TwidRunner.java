@@ -236,7 +236,9 @@ public class TwidRunner implements CommandLineRunner {
                                 // 根据类型获取Extractor
                                 String type = media.get("type").getAsString();
                                 Extractor extractor = MEDIA_EXTRACTOR.get(type);
-                                urls.add(extractor.extract(media));
+                                if (extractor != null) {
+                                    urls.add(extractor.extract(media));
+                                }
                             });
 
                             mediaUrls.put(strPrettyCreationDate, urls);
