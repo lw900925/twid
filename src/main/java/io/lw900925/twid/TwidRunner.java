@@ -143,8 +143,10 @@ public class TwidRunner implements CommandLineRunner {
 
             logger.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, i + 1, pageTimelines.size());
 
-            // 如果获取的分页内容为0，提前结束循环
-            if (pageTimelines.size() <= 0) {
+            // 如果获取的分页内容为1，提前结束循环
+            // 分页内容为1，其实就是上面max_id查询的结果，由于twitter api有访问次数限制（1500次/15min），为避免超过最大次数导致http 429错误
+            // 这里判断size为1的时候就可以结束了
+            if (pageTimelines.size() <= 1) {
                 break;
             }
 
@@ -159,7 +161,6 @@ public class TwidRunner implements CommandLineRunner {
         // 最终结果集的数量可能和用户信息中获取的推文数量不相等，这里获取的timeline是包含用户转发的推文的，所以会多；
         // 也有可能他自己删掉了一些，就会变少
         logger.debug("{} - 所有timeline已经获取完毕，结果集中共包含{}条", screenName, timelines.size());
-
 
         Map<String, Object> map = new HashMap<>();
         map.put(USER, user);
@@ -235,7 +236,9 @@ public class TwidRunner implements CommandLineRunner {
                                 // 根据类型获取Extractor
                                 String type = media.get("type").getAsString();
                                 Extractor extractor = MEDIA_EXTRACTOR.get(type);
-                                urls.add(extractor.extract(media));
+                                if (extractor != null) {
+                                    urls.add(extractor.extract(media));
+                                }
                             });
 
                             mediaUrls.put(strPrettyCreationDate, urls);
