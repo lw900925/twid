@@ -31,6 +31,7 @@ import java.text.ParseException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @Component
 public class TwidRunner implements CommandLineRunner {
@@ -275,6 +276,10 @@ public class TwidRunner implements CommandLineRunner {
         String screenName = user.get("screen_name").getAsString();
 
         // 用户下载目录
+        String[] chars = {"<", ">", "/", "\\", "|", ":", "*", "?"};
+        if (StringUtils.containsAny(name, chars)) {
+            name = StringUtils.replaceEach(name, chars, new String[] {"", "", "", "", "", "", "", ""});
+        }
         Path downloadPath = Paths.get(properties.getLocation(), name + "@" + screenName);
 
         logger.debug("{} - 开始下载媒体文件...", screenName);
