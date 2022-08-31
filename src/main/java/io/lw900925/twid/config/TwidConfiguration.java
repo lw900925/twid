@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import okhttp3.ConnectionPool;
 import okhttp3.Credentials;
 import okhttp3.OkHttpClient;
+import okhttp3.TlsVersion;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -48,7 +49,7 @@ public class TwidConfiguration {
     public SSLSocketFactory sslSocketFactory() {
         try {
             //信任任何链接
-            SSLContext sslContext = SSLContext.getInstance("TLS");
+            SSLContext sslContext = SSLContext.getInstance(TlsVersion.TLS_1_2.javaName());
             sslContext.init(null, new TrustManager[]{x509TrustManager()}, new SecureRandom());
             return sslContext.getSocketFactory();
         } catch (NoSuchAlgorithmException | KeyManagementException e) {

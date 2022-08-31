@@ -24,6 +24,7 @@ import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -311,6 +312,8 @@ public class TwidRunner implements CommandLineRunner {
                             Files.copy(inputStream, path);
 
                             logger.debug("{} - 第[{}/{}]个文件下载完成：{}", screenName, indexAI.incrementAndGet(), count, path);
+                        } catch (FileAlreadyExistsException e) {
+                            logger.debug("{} - 第[{}/{}]个文件已存在，跳过下载", screenName, indexAI.incrementAndGet(), count);
                         } catch (Exception e) {
                             logger.error("文件下载出错 - url: {}, filename: {}", url, filename);
                             logger.error(e.getMessage(), e);
@@ -319,6 +322,7 @@ public class TwidRunner implements CommandLineRunner {
                         logger.error("{} - 文件下载失败，status: {}, body: {}, URL：{}", screenName, response.code(), Objects.requireNonNull(response.body()).string(), url);
                     }
                 } catch (IOException e) {
+                    logger.error("文件下载出错 - uri: {}", url);
                     throw new RuntimeException(e);
                 }
             });
