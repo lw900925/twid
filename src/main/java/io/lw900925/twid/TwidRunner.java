@@ -108,6 +108,12 @@ public class TwidRunner implements CommandLineRunner {
     @SuppressWarnings("unchecked")
     public Map<String, Object> getTimelines(String screenName) {
         JSONObject user = getUserInfo(screenName);
+        List<JSONObject> errors = user.getByPath("errors", List.class);
+        if (CollUtil.isNotEmpty(errors)) {
+            logger.error("获取用户信息失败: {}",  JSONUtil.toJsonStr(errors));
+            return null;
+        }
+
         JSONObject userInfo = user.getByPath("data.user", JSONObject.class);
 
         // 推文数量
@@ -157,8 +163,8 @@ public class TwidRunner implements CommandLineRunner {
                     continue;
                 }
 
-                String timelineId = timelineEntry.getByPath("content.itemContent.tweet_results.result.rest_id", String.class);
-                String lastTimelineId = TIMELINE_ID.get(screenName);
+                String timelineId = getResult(timelineEntry).getByPath("rest_id", String.class);
+                String lastTimelineId = TIMELINE_ID.get(screenName.toLowerCase());
                 if (StrUtil.isNotBlank(lastTimelineId) && lastTimelineId.equals(timelineId)) {
                     // 本次抓取结果中是否包含上次最新的一条媒体推文，如果是，后面的timeline就不用再处理了
                     lastTimelineMatched = true;
@@ -287,7 +293,7 @@ public class TwidRunner implements CommandLineRunner {
         // 提取媒体链接
         if (CollUtil.isNotEmpty(timelines)) {
             for (JSONObject timeline : timelines) {
-                JSONObject result = timeline.getByPath("content.itemContent.tweet_results.result.legacy", JSONObject.class);
+                JSONObject result = getResult(timeline).getByPath("legacy", JSONObject.class);
                 String strCreatedAt = result.getByPath("created_at", String.class);
                 try {
                     String strPrettyCreationDate = DateFormatUtils.format(DateUtils.parseDate(strCreatedAt, Locale.US, DATE_PATTERN), "yyyyMMdd_HHmmss");
@@ -394,7 +400,8 @@ public class TwidRunner implements CommandLineRunner {
         });
 
         // 所有媒体下载完成，更新timeline_id
-        TIMELINE_ID.put(screenName, topTimeline.getByPath("content.itemContent.tweet_results.result.rest_id", String.class));
+        String lastTimelineId = getResult(topTimeline).getByPath("rest_id", String.class);
+        TIMELINE_ID.put(screenName, lastTimelineId);
 
         // 保存用户信息
         Path path = Paths.get(downloadPath.toString(), "_user_info.json");
@@ -406,6 +413,20 @@ public class TwidRunner implements CommandLineRunner {
         } catch (IOException e) {
             logger.error("用户信息写入失败 - " + e.getMessage(), e);
         }
+    }
+
+    public JSONObject getResult(JSONObject timeline) {
+        JSONObject result = timeline.getByPath("content.itemContent.tweet_results.result", JSONObject.class);
+        if (result != null && result.containsKey("legacy")) {
+            return result;
+        }
+
+        result = timeline.getByPath("content.itemContent.tweet_results.result.tweet", JSONObject.class);
+        if (result != null && result.containsKey("legacy")) {
+            return result;
+        }
+
+        throw new RuntimeException(String.format("获取timeline内容失败：\n%s", JSONUtil.toJsonPrettyStr(timeline)));
     }
 
     @PreDestroy

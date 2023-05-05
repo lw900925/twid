@@ -1,5 +1,8 @@
 package io.lw900925.twid.cache;
 
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -37,8 +40,6 @@ public class FileCacheManager implements CacheManager {
 
     @Autowired
     private TwidProperties properties;
-    @Autowired
-    private Gson gson;
 
     @PostConstruct
     private void postConstruct() throws IOException {
@@ -52,18 +53,10 @@ public class FileCacheManager implements CacheManager {
     @Override
     public Map<String, String> load() {
         Map<String, String> map = new TreeMap<>(String::compareTo);
-        try (InputStream inputStream = Files.newInputStream(cache)) {
-            String jsonStr = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
-            if (StringUtils.isNotBlank(jsonStr)) {
-                JsonArray timelineIds = JsonParser.parseString(jsonStr).getAsJsonArray();
-                timelineIds.forEach(timelineId -> {
-                    map.put(timelineId.getAsJsonObject().get(SCREEN_NAME).getAsString(), timelineId.getAsJsonObject().get(TIMELINE_ID).getAsString());
-                });
-            }
-        } catch (IOException e) {
-            logger.error("读取缓存文件失败 - " + e.getMessage(), e);
-        }
-
+        JSONArray timelineIds = JSONUtil.readJSONArray(cache.toFile(), StandardCharsets.UTF_8);
+        timelineIds.stream().map(it -> (JSONObject) it).forEach( timelineId -> {
+            map.put(timelineId.getByPath(SCREEN_NAME, String.class).toLowerCase(), timelineId.getByPath(TIMELINE_ID, String.class));
+        });
         return map;
     }
 
@@ -75,7 +68,7 @@ public class FileCacheManager implements CacheManager {
             list.add(ImmutableMap.of(SCREEN_NAME, key, TIMELINE_ID, value));
         });
 
-        String jsonStr = gson.toJson(list);
+        String jsonStr = JSONUtil.toJsonPrettyStr(list);
 
         try {
             Files.delete(cache);
