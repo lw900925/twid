@@ -9,8 +9,13 @@ version = ''
 sourceCompatibility = '1.8'
 
 repositories {
+	maven {
+		url "https://maven.aliyun.com/nexus/content/groups/public"
+	}
+	mavenLocal()
 	mavenCentral()
 }
+
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter'
