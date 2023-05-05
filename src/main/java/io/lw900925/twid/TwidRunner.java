@@ -1,11 +1,44 @@
 package io.lw900925.twid;
 
-import com.google.gson.*;
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.io.IoUtil;
+import cn.hutool.core.lang.TypeReference;
+import cn.hutool.core.net.URLEncodeUtil;
+import cn.hutool.core.util.ReUtil;
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import io.lw900925.twid.cache.CacheManager;
 import io.lw900925.twid.config.TwidProperties;
+import io.lw900925.twid.config.TwidProperties.Twitter.API;
+import io.lw900925.twid.config.TwidProperties.Twitter.ApiInfo;
 import io.lw900925.twid.exactor.Extractor;
 import io.lw900925.twid.exactor.PhotoExtractor;
 import io.lw900925.twid.exactor.VideoExtractor;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -16,23 +49,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-import org.springframework.util.CollectionUtils;
-
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.text.ParseException;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 @Component
 public class TwidRunner implements CommandLineRunner {
@@ -45,6 +63,8 @@ public class TwidRunner implements CommandLineRunner {
     private static final String MEDIA_URLS = "media_urls";
 
     private static final String DATE_PATTERN = "EEE MMM dd HH:mm:ss XX yyyy";
+    private static final Pattern CSRF_PATTERN = Pattern.compile("ct0=(.+?)(?:;|$)");
+
 
     @Autowired
     private TwidProperties properties;
@@ -52,11 +72,8 @@ public class TwidRunner implements CommandLineRunner {
     private OkHttpClient okHttpClient;
     @Autowired
     private CacheManager cacheManager;
-    @Autowired
-    private Gson gson;
 
     private List<String> LIST = new ArrayList<>();
-    private List<JsonObject> PROTECTED_USERS = new ArrayList<>();
     private Map<String, String> TIMELINE_ID = new TreeMap<>(String::compareTo);
     private Map<String, Extractor> MEDIA_EXTRACTOR = new HashMap<String, Extractor>() {{
         put("video", new VideoExtractor());
@@ -76,7 +93,7 @@ public class TwidRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        LIST.forEach(screenName -> {
+        for (String screenName : LIST) {
             // step1.获取推文
             Map<String, Object> map = getTimelines(screenName);
 
@@ -85,111 +102,156 @@ public class TwidRunner implements CommandLineRunner {
 
             // step3.下载媒体文件
             download(map);
-        });
+        }
     }
 
+    @SuppressWarnings("unchecked")
     public Map<String, Object> getTimelines(String screenName) {
-        JsonObject user = getUserInfo(screenName);
-        screenName = user.get("screen_name").getAsString();
-
-        // 判断该用户是否锁推
-        if (user.get("protected").getAsBoolean()) {
-            PROTECTED_USERS.add(user);
-            logger.debug("{} - 推文受保护，跳过该用户", screenName);
-            return null;
-        }
+        JSONObject user = getUserInfo(screenName);
+        JSONObject userInfo = user.getByPath("data.user", JSONObject.class);
 
         // 推文数量
-        int count = user.get("statuses_count").getAsInt();
+        int count = userInfo.getByPath("legacy.media_count", int.class);
         if (count == 0) {
             return null;
         }
-        logger.debug("{} - 总共有{}条推文", screenName, count);
-
-        // 一个简单的分页逻辑
-        int page = 0;
-        int size = properties.getTwitter().getSize();
-        if (count % size == 0) {
-            page = count / size;
-        } else {
-            page = (count / size) + 1;
-        }
+        logger.debug("{} - 总共有{}条媒体推文", screenName, count);
 
         // 请求参数
-        String url = properties.getTwitter().getApi().getBaseUrl() + "/statuses/user_timeline.json";
-        Map<String, String> parameters = new HashMap<>();
-        parameters.put("screen_name", screenName);
-        parameters.put("count", String.valueOf(size));
-        parameters.put("exclude_replies", "true");
-        parameters.put("tweet_mode", "extended");
-        // 如果是增量抓取，先读取data目录下该用户上次最新推文id
-        if (TIMELINE_ID.containsKey(screenName) && properties.getTwitter().getIncrement()) {
-            parameters.put("since_id", TIMELINE_ID.get(screenName));
-        }
+        ApiInfo mediaApi = properties.getTwitter().getApi().get(API.media);
+        String url = mediaApi.getUrl();
+        Map<String, Object> parameter = parseParameter(mediaApi.getParam());
+        Map<String, Object> features = (Map<String, Object>) parameter.get("features");
+        Map<String, Object> variables = (Map<String, Object>) parameter.get("variables");
+        // 填入user_id和count
+        variables.put("userId", userInfo.getByPath("rest_id", String.class));
+        variables.put("count", properties.getTwitter().getSize());
 
-        JsonArray timelines = new JsonArray();
-        // 循环获取所有timeline
-        for (int i = 0; i < page; i++) {
+        // 当前用户抓取的timeline
+        List<JSONObject> timelines = Lists.newArrayList();
+        int index = 0;
+        while (true) {
+            // 组织参数，获取timeline
+            String jsonStr = httpGet(url, ImmutableMap.<String, String>builder()
+                .put("variables", JSONUtil.toJsonStr(variables))
+                .put("features", JSONUtil.toJsonStr(features))
+                .build());
+            JSONObject response = JSONUtil.parseObj(jsonStr);
 
-            // 获取最后一个timeline，取id设为max_id
-            // max_id相当于分页中的offset
-            if (timelines.size() > 0) {
-                JsonObject timeline = timelines.get(timelines.size() - 1).getAsJsonObject();
-                String maxId = timeline.get("id_str").getAsString();
-                parameters.put("max_id", maxId);
-            }
-
-            // 获取timeline
-            String jsonStr = httpGet(url, parameters);
-            JsonArray pageTimelines = JsonParser.parseString(jsonStr).getAsJsonArray();
-
-            logger.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, i + 1, pageTimelines.size());
-
-            // 如果获取的分页内容为1，提前结束循环
-            // 分页内容为1，其实就是上面max_id查询的结果，由于twitter api有访问次数限制（1500次/15min），为避免超过最大次数导致http 429错误
-            // 这里判断size为1的时候就可以结束了
-            if (pageTimelines.size() <= 1) {
+            List<JSONObject> timelineEntries = response.getByPath("data.user.result.timeline_v2.timeline.instructions[0].entries", List.class);
+            logger.debug("{} - 第{}次抓取，本次返回{}条timeline", screenName, index + 1, timelineEntries.size());
+            if (CollUtil.isEmpty(timelineEntries)) {
                 break;
             }
 
-            // 合并到结果集
-            timelines.addAll(pageTimelines);
+            // 是否抓取完毕，请求结果中没有timeline，只有翻页游标时，结束循环
+            boolean isNonTimeline = timelineEntries.stream().noneMatch(it -> it.getByPath("entryId", String.class).startsWith("tweet-"));
+            if (isNonTimeline) {
+                break;
+            }
+
+            boolean lastTimelineMatched = false;
+            for (JSONObject timelineEntry : timelineEntries) {
+                // 过滤掉非timeline
+                if (!timelineEntry.getByPath("entryId", String.class).startsWith("tweet-")) {
+                    continue;
+                }
+
+                String timelineId = timelineEntry.getByPath("content.itemContent.tweet_results.result.rest_id", String.class);
+                String lastTimelineId = TIMELINE_ID.get(screenName);
+                if (StrUtil.isNotBlank(lastTimelineId) && lastTimelineId.equals(timelineId)) {
+                    // 本次抓取结果中是否包含上次最新的一条媒体推文，如果是，后面的timeline就不用再处理了
+                    lastTimelineMatched = true;
+                    break;
+                }
+
+                // 添加到结果集中
+                timelines.add(timelineEntry);
+            }
+
+            // 如果匹配导缓存中上次抓取的最新推文，后面的不需要处理了，提前结束循环
+            if (lastTimelineMatched) {
+                break;
+            }
+
+            // 判断后面是否还有数据，是否再次查询
+            String cursor = timelineEntries.stream()
+                .filter(it -> it.getByPath("entryId", String.class).startsWith("cursor-bottom"))
+                .map(it -> it.getByPath("content.value", String.class))
+                .findFirst().orElse(null);
+            if (StrUtil.isNotBlank(cursor)) {
+                variables.put("cursor", cursor); // 分页的游标
+            } else {
+                break;
+            }
+
+            index++;
         }
 
-        if (timelines.size() == 0) {
+        if (CollUtil.isEmpty(timelines)) {
             return null;
         }
 
-        // 最终结果集的数量可能和用户信息中获取的推文数量不相等，这里获取的timeline是包含用户转发的推文的，所以会多；
-        // 也有可能他自己删掉了一些，就会变少
         logger.debug("{} - 所有timeline已经获取完毕，结果集中共包含{}条", screenName, timelines.size());
 
         Map<String, Object> map = new HashMap<>();
-        map.put(USER, user);
-        map.put(TOP_TIMELINE, timelines.get(0).getAsJsonObject());
+        map.put(USER, userInfo);
+        map.put(TOP_TIMELINE, timelines.get(0));
         map.put(TIMELINES, timelines);
         return map;
     }
 
-    public JsonObject getUserInfo(String screenName) {
-        String url = properties.getTwitter().getApi().getBaseUrl() + "/users/show.json";
-        Map<String, String> parameters = new HashMap<>();
-        parameters.put("screen_name", screenName);
-        String jsonStr = httpGet(url, parameters);
-        return JsonParser.parseString(jsonStr).getAsJsonObject();
+    public JSONObject getUserInfo(String screenName) {
+        ApiInfo userInfoApi = properties.getTwitter().getApi().get(API.user_info);
+        String url = userInfoApi.getUrl();
+
+        // 解析参数文件，填入screen_name
+        Map<String, Object> parameter = parseParameter(userInfoApi.getParam());
+        parameter.put("screen_name", screenName);
+
+        // 组织参数
+        String jsonStr = httpGet(url, ImmutableMap.<String, String> builder()
+            .put("variables", JSONUtil.toJsonStr(parameter))
+            .build());
+        return JSONUtil.parseObj(jsonStr);
+    }
+
+    public Map<String, Object> parseParameter(Resource resource) {
+        try (InputStream inputStream = resource.getInputStream()) {
+            String content = IoUtil.read(inputStream, StandardCharsets.UTF_8);
+            return JSONUtil.toBean(content, new TypeReference<Map<String, Object>>() {
+            }, false);
+
+        } catch (IOException e) {
+            logger.error(String.format("获取用户信息出错，读取param内容失败：%s", e.getMessage()));
+            throw new RuntimeException(e);
+        }
     }
 
     public String httpGet(String url, Map<String, String> parameters) {
         String jsonStr = null;
 
+        String cookie = properties.getTwitter().getCookie();
+        List<String> strs = ReUtil.findAll(CSRF_PATTERN, cookie, 0);
+        if (CollUtil.isEmpty(strs)) {
+            throw new RuntimeException("token中未包含csrf_token信息");
+        }
+        String csrf = strs.get(0);
+        csrf = csrf.split("=")[1];
+        csrf = StrUtil.replace(csrf, ";", StrUtil.EMPTY);
+
+
+
         String[] keyValuePairs = parameters.entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue()).toArray(String[]::new);
         String strQueryParam = String.join("&", keyValuePairs);
-        url = url + "?" + strQueryParam;
+        url = url + "?" + encodeQuery(strQueryParam);
         Request request = new Request.Builder()
-                .url(url)
-                .addHeader("Authorization", properties.getTwitter().getApi().getAccessToken())
-                .get()
-                .build();
+            .url(url)
+            .addHeader("Authorization", properties.getTwitter().getAccessToken())
+            .addHeader("Cookie", properties.getTwitter().getCookie())
+            .addHeader("X-CSRF-TOKEN", csrf)
+            .get()
+            .build();
         try {
             Response response = okHttpClient.newCall(request).execute();
             if (response.isSuccessful() && response.body() != null) {
@@ -203,6 +265,13 @@ public class TwidRunner implements CommandLineRunner {
         return jsonStr;
     }
 
+    public String encodeQuery(String queryStr) {
+        queryStr = URLEncodeUtil.encodeQuery(queryStr);
+        queryStr = StrUtil.replace(queryStr, ":", "%3A"); // 对:特殊处理
+        return queryStr;
+    }
+
+    @SuppressWarnings("unchecked")
     public Map<String, Object> extract(Map<String, Object> map) {
         Map<String, List<String>> mediaUrls = new LinkedHashMap<>();
 
@@ -210,48 +279,43 @@ public class TwidRunner implements CommandLineRunner {
             return null;
         }
 
-        JsonObject user = (JsonObject) map.get(USER);
-        JsonArray timelines = (JsonArray) map.get(TIMELINES);
-
-        String screenName = user.get("screen_name").getAsString();
+        JSONObject userInfo = (JSONObject) map.get(USER);
+        List<JSONObject> timelines = (List<JSONObject>) map.get(TIMELINES);
+        String screenName = userInfo.getByPath("legacy.screen_name", String.class);
         logger.debug("{} - 正在提取推文中的媒体链接，请稍后...", screenName);
 
         // 提取媒体链接
-        if (timelines != null && timelines.size() > 0) {
-            timelines.forEach(timelineJsonElement -> {
-                JsonObject timeline = timelineJsonElement.getAsJsonObject();
-
-                // 推文的创建日期
-                String strCreatedAt = timeline.get("created_at").getAsString();
+        if (CollUtil.isNotEmpty(timelines)) {
+            for (JSONObject timeline : timelines) {
+                JSONObject result = timeline.getByPath("content.itemContent.tweet_results.result.legacy", JSONObject.class);
+                String strCreatedAt = result.getByPath("created_at", String.class);
                 try {
                     String strPrettyCreationDate = DateFormatUtils.format(DateUtils.parseDate(strCreatedAt, Locale.US, DATE_PATTERN), "yyyyMMdd_HHmmss");
 
-                    JsonElement extendedEntitiesJsonElement = timeline.get("extended_entities");
-                    if (extendedEntitiesJsonElement != null) {
-                        JsonArray medias = extendedEntitiesJsonElement.getAsJsonObject().get("media").getAsJsonArray();
-                        if (medias != null && medias.size() > 0) {
+                    JSONObject extendedEntities = result.getByPath("extended_entities", JSONObject.class);
+                    if (extendedEntities != null) {
+                        List<JSONObject> media = extendedEntities.getByPath("media", List.class);
+                        if (CollUtil.isNotEmpty(media)) {
                             List<String> urls = new ArrayList<>();
 
-                            // 解析媒体文件
-                            medias.forEach(mediaJsonElement -> {
-                                JsonObject media = mediaJsonElement.getAsJsonObject();
-                                // 根据类型获取Extractor
-                                String type = media.get("type").getAsString();
+                            for (JSONObject mediaEntry : media) {
+                                String type = mediaEntry.getByPath("type", String.class);
                                 Extractor extractor = MEDIA_EXTRACTOR.get(type);
                                 if (extractor != null) {
-                                    urls.add(extractor.extract(media));
+                                    urls.add(extractor.extract(mediaEntry));
                                 }
-                            });
+                            }
 
                             mediaUrls.put(strPrettyCreationDate, urls);
                         }
                     }
 
+
                 } catch (ParseException e) {
                     logger.debug("日期解析异常，creation_at: {}", strCreatedAt);
                     logger.error(e.getMessage(), e);
                 }
-            });
+            }
         }
 
         map.put(MEDIA_URLS, mediaUrls);
@@ -261,25 +325,25 @@ public class TwidRunner implements CommandLineRunner {
     @SuppressWarnings("unchecked")
     public void download(Map<String, Object> map) {
 
-        if (map == null || ((JsonArray) map.get(TIMELINES)).size() == 0) {
+        if (map == null || ((List<JSONObject>) map.get(TIMELINES)).size() == 0) {
             return;
         }
 
-        JsonObject user = (JsonObject) map.get(USER);
-        JsonObject topTimeline = (JsonObject) map.get(TOP_TIMELINE);
+        JSONObject userInfo = (JSONObject) map.get(USER);
+        JSONObject topTimeline = (JSONObject) map.get(TOP_TIMELINE);
         Map<String, List<String>> mediaUrls = (Map<String, List<String>>) map.get(MEDIA_URLS);
 
         List<String> flatUrls = mediaUrls.values().stream().flatMap(Collection::stream).collect(Collectors.toList());
         int count = flatUrls.size();
         AtomicInteger indexAI = new AtomicInteger(0);
 
-        String name = user.get("name").getAsString();
-        String screenName = user.get("screen_name").getAsString();
+        String name = userInfo.getByPath("legacy.name", String.class);
+        String screenName = userInfo.getByPath("legacy.screen_name", String.class);
 
         // 用户下载目录
         String[] chars = {"<", ">", "/", "\\", "|", ":", "*", "?"};
         if (StringUtils.containsAny(name, chars)) {
-            name = StringUtils.replaceEach(name, chars, new String[] {"", "", "", "", "", "", "", ""});
+            name = StringUtils.replaceEach(name, chars, new String[]{"", "", "", "", "", "", "", ""});
         }
         Path downloadPath = Paths.get(properties.getLocation(), name + "@" + screenName);
 
@@ -289,10 +353,11 @@ public class TwidRunner implements CommandLineRunner {
             String key = entry.getKey();
             List<String> value = entry.getValue();
 
-            value.forEach(url -> {
+            for (String url : value) {
                 Request request = new Request.Builder().url(url).get().build();
                 try {
                     Response response = okHttpClient.newCall(request).execute();
+
                     String filename = "";
                     if (response.isSuccessful()) {
                         try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
@@ -325,15 +390,15 @@ public class TwidRunner implements CommandLineRunner {
                     logger.error("文件下载出错 - uri: {}", url);
                     throw new RuntimeException(e);
                 }
-            });
+            }
         });
 
         // 所有媒体下载完成，更新timeline_id
-        TIMELINE_ID.put(screenName, topTimeline.get("id_str").getAsString());
+        TIMELINE_ID.put(screenName, topTimeline.getByPath("content.itemContent.tweet_results.result.rest_id", String.class));
 
         // 保存用户信息
         Path path = Paths.get(downloadPath.toString(), "_user_info.json");
-        String jsonStr = gson.toJson(user);
+        String jsonStr = JSONUtil.toJsonStr(userInfo);
         try {
             Files.createDirectories(path.getParent());
             Files.deleteIfExists(path);
@@ -347,13 +412,5 @@ public class TwidRunner implements CommandLineRunner {
     private void preDestroy() {
         // 缓存写回文件
         cacheManager.save(TIMELINE_ID);
-
-        // 锁推的用户
-        if (!CollectionUtils.isEmpty(PROTECTED_USERS)) {
-            logger.debug("下列用户已锁推：");
-            PROTECTED_USERS.forEach(user -> {
-                logger.debug("{}({})", user.get("name").getAsString(), user.get("screen_name").getAsString());
-            });
-        }
     }
 }

@@ -1,6 +1,8 @@
 package io.lw900925.twid.config;
 
+import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
 @ConfigurationProperties(prefix = "twi")
@@ -14,30 +16,78 @@ public class TwidProperties {
 
     public static class Twitter {
 
-        private Api api;
+        /**
+         * Maybe Bearer access token
+         */
+        private String accessToken;
+
+        /**
+         * Cookie
+         */
+        private String cookie;
+
+        /**
+         * APIs
+         */
+        private Map<API, ApiInfo> api;
+
+        /**
+         * HTTP proxy
+         */
         private Proxy proxy;
-        private Integer size = 200;
-        private Boolean increment = true;
 
-        public static class Api {
-            private String baseUrl;
-            private String accessToken;
+        /**
+         * Page size
+         */
+        private Integer size = 100;
 
-            public String getBaseUrl() {
-                return baseUrl;
+        /**
+         * Twitter Info
+         */
+        public static class ApiInfo {
+
+            /**
+             * URL
+             */
+            private String url;
+
+            /**
+             * Maybe query param
+             */
+            private Resource param;
+
+            public String getUrl() {
+                return url;
             }
 
-            public void setBaseUrl(String baseUrl) {
-                this.baseUrl = baseUrl;
+            public void setUrl(String url) {
+                this.url = url;
             }
 
-            public String getAccessToken() {
-                return accessToken;
+            public Resource getParam() {
+                return param;
             }
 
-            public void setAccessToken(String accessToken) {
-                this.accessToken = accessToken;
+            public void setParam(Resource param) {
+                this.param = param;
             }
+        }
+
+        /**
+         * Twitter APIs
+         */
+        public static enum API {
+            /**
+             * 媒体页
+             */
+            media,
+
+            /**
+             * 用户详情
+             */
+            user_info,
+
+            ;
         }
 
         public static class Proxy {
@@ -79,11 +129,27 @@ public class TwidProperties {
             }
         }
 
-        public Api getApi() {
+        public String getAccessToken() {
+            return accessToken;
+        }
+
+        public void setAccessToken(String accessToken) {
+            this.accessToken = accessToken;
+        }
+
+        public String getCookie() {
+            return cookie;
+        }
+
+        public void setCookie(String cookie) {
+            this.cookie = cookie;
+        }
+
+        public Map<API, ApiInfo> getApi() {
             return api;
         }
 
-        public void setApi(Api api) {
+        public void setApi(Map<API, ApiInfo> api) {
             this.api = api;
         }
 
@@ -101,14 +167,6 @@ public class TwidProperties {
 
         public void setSize(Integer size) {
             this.size = size;
-        }
-
-        public Boolean getIncrement() {
-            return increment;
-        }
-
-        public void setIncrement(Boolean increment) {
-            this.increment = increment;
         }
     }
 

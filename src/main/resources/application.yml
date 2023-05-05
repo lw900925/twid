@@ -8,12 +8,20 @@ logging:
 
 twi:
   twitter:
+    access-token: Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA
+    cookie: guest_id=v1:168319332397185599; _twitter_sess=BAh7CSIKZmxhc2hJQzonQWN0aW9uQ29udHJvbGxlcjo6Rmxhc2g6OkZsYXNo%0ASGFzaHsABjoKQHVzZWR7ADoPY3JlYXRlZF9hdGwrCPPwI%2BaHAToMY3NyZl9p%0AZCIlOTA4MTIyOGNhMmE4MGE1NzA4MTdjMTkwZWFmODYzZmQ6B2lkIiVjOTBm%0AOGI3NDVkNzVkZjA2N2RhOTExMTY0ZmJhNjFlZA%3D%3D--ee4bdb4d8935ae4d1fd28115225a45353d2dd1e6; kdt=wgN5wg34l0OX92g7EouebqTrxf8MeEzn546CuDgo; auth_token=8a4d756e43fffb07d2a33e69176f098f648a1e4d; ct0=e6a3b813b9beee210fd80c51999a462d6fc3eb7f7ac55ec2437f3949e2d51db99bfc79ff0364463ef56fbe19cef427bcd4773b879b40ca21e792a8209dd763ac44756849aae656893cf0ac155cc976e1; lang=zh-cn; twid=u=1130422335251464193; guest_id_marketing=v1:168319332397185599; guest_id_ads=v1:168319332397185599; personalization_id="v1_6KkG2iT+AupwzkdFgfV26g=="
     api:
-      base-url: https://api.twitter.com/1.1
-      access-token:
+      media:
+        url: https://api.twitter.com/graphql/YcKL-v9RI2t42QCEDfv-9g/UserMedia
+        param: classpath:param/media.json
+      user_info:
+        url: https://twitter.com/i/api/graphql/Vf8si2dfZ1zmah8ePYPjDQ/UserByScreenNameWithoutResults
+        param: classpath:param/user_info.json
     proxy:
       host: 127.0.0.1
       port: 7890
+      username:
+      password:
   list: ${user.dir}/config/list.txt
   cache: ${user.dir}/cache/timeline_id.json
   location: ${user.dir}/downloads

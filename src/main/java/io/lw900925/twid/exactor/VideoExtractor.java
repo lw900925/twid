@@ -1,43 +1,36 @@
 package io.lw900925.twid.exactor;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import org.apache.commons.lang3.StringUtils;
-
+import cn.hutool.json.JSONObject;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
+import org.apache.commons.lang3.StringUtils;
 
 public class VideoExtractor implements Extractor {
 
+    @SuppressWarnings("unchecked")
     @Override
-    public String extract(JsonObject jsonObject) {
+    public String extract(JSONObject jsonObject) {
         String url = null;
-        JsonElement videoInfoJsonElement = jsonObject.get("video_info");
-        if (videoInfoJsonElement != null) {
-            JsonObject videoInfo = videoInfoJsonElement.getAsJsonObject();
-            JsonArray variants = videoInfo.get("variants").getAsJsonArray();
-            List<JsonElement> variantJsonElements = StreamSupport.stream(variants.spliterator(), false)
-                    .map(JsonElement::getAsJsonObject)
-                    .filter(variantJsonObject -> variantJsonObject.get("content_type").getAsString().equals("video/mp4"))
-                    .collect(Collectors.toList());
-            // 视频文件的比特率
-            List<Long> bitrates = variantJsonElements.stream()
-                    .map(variant -> variant.getAsJsonObject().get("bitrate").getAsLong())
-                    .sorted(Comparator.reverseOrder())
-                    .collect(Collectors.toList());
-
+        JSONObject videoInfo = jsonObject.getByPath("video_info", JSONObject.class);
+        if (videoInfo != null) {
+            List<JSONObject> variants = videoInfo.getByPath("variants", List.class);
+            // 过滤出mp4视频文件
+            variants = variants.stream()
+                .filter(it -> it.getByPath("content_type", String.class).equals("video/mp4"))
+                .collect(Collectors.toList());
+            // 视频文件的比特率，从大到小排序
+            List<Long> bitrates = variants.stream()
+                .map(it -> it.getByPath("bitrate", Long.class))
+                .sorted(Comparator.reverseOrder())
+                .collect(Collectors.toList());
             // 按照比特率分组
-            Map<Long, List<JsonElement>> variantsGroup = variantJsonElements.stream()
-                    .collect(Collectors.groupingBy(jsonElement -> jsonElement.getAsJsonObject().get("bitrate").getAsLong()));
-
+            Map<Long, List<JSONObject>> variantsGroup = variants.stream().collect(Collectors.groupingBy(it -> it.getByPath("bitrate", Long.class)));
             // 首选获得比特率最大的视频
             for (Long bitrate : bitrates) {
-                List<JsonElement> bitrateVariants = variantsGroup.get(bitrate);
-                url = bitrateVariants.stream().map(jsonElement -> jsonElement.getAsJsonObject().get("url").getAsString()).findFirst().orElse("");
+                List<JSONObject> bitrateVariants = variantsGroup.get(bitrate);
+                url = bitrateVariants.stream().map(it -> it.getByPath("url", String.class)).findFirst().orElse("");
                 if (StringUtils.isNotBlank(url)) {
                     break;
                 }

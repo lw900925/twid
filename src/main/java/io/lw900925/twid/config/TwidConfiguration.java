@@ -2,18 +2,6 @@ package io.lw900925.twid.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import okhttp3.ConnectionPool;
-import okhttp3.Credentials;
-import okhttp3.OkHttpClient;
-import okhttp3.TlsVersion;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringBootConfiguration;
-import org.springframework.context.annotation.Bean;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.security.KeyManagementException;
@@ -22,6 +10,17 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import okhttp3.ConnectionPool;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+import okhttp3.TlsVersion;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.context.annotation.Bean;
 
 @SpringBootConfiguration
 public class TwidConfiguration {
