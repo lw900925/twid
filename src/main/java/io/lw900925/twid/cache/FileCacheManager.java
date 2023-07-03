@@ -1,5 +1,6 @@
 package io.lw900925.twid.cache;
 
+import cn.hutool.core.util.NumberUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -8,6 +9,9 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
 import io.lw900925.twid.config.TwidProperties;
+import java.util.Comparator;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,21 +56,24 @@ public class FileCacheManager implements CacheManager {
 
     @Override
     public Map<String, String> load() {
-        Map<String, String> map = new TreeMap<>(String::compareTo);
         JSONArray timelineIds = JSONUtil.readJSONArray(cache.toFile(), StandardCharsets.UTF_8);
-        timelineIds.stream().map(it -> (JSONObject) it).forEach( timelineId -> {
-            map.put(timelineId.getByPath(SCREEN_NAME, String.class).toLowerCase(), timelineId.getByPath(TIMELINE_ID, String.class));
-        });
-        return map;
+
+        return timelineIds.stream().map(it -> (JSONObject) it)
+            .collect(Collectors.toMap(
+                it -> it.getByPath(SCREEN_NAME, String.class).toLowerCase(),
+                it -> it.getByPath(TIMELINE_ID, String.class),
+                (a, b) -> {
+                    // 当key相同时，取最大一个id
+                    long twiId = NumberUtil.max(Long.parseLong(a), Long.parseLong(b));
+                    return String.valueOf(twiId);
+                }, () -> new TreeMap<>(String::compareTo)));
     }
 
     @Override
     public void save(Map<String, String> timelines) {
         List<Map<String, Object>> list = new ArrayList<>();
 
-        timelines.forEach((key, value) -> {
-            list.add(ImmutableMap.of(SCREEN_NAME, key, TIMELINE_ID, value));
-        });
+        timelines.forEach((key, value) -> list.add(ImmutableMap.of(SCREEN_NAME, key.toLowerCase(), TIMELINE_ID, value)));
 
         String jsonStr = JSONUtil.toJsonPrettyStr(list);
 
