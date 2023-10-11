@@ -36,15 +36,17 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import okhttp3.Call;
+import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.apache.commons.lang3.time.DateUtils;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,7 +67,6 @@ public class TwidRunner implements CommandLineRunner {
     private static final String DATE_PATTERN = "EEE MMM dd HH:mm:ss XX yyyy";
     private static final Pattern CSRF_PATTERN = Pattern.compile("ct0=(.+?)(?:;|$)");
 
-
     @Autowired
     private TwidProperties properties;
     @Autowired
@@ -75,7 +76,7 @@ public class TwidRunner implements CommandLineRunner {
 
     private List<String> LIST = new ArrayList<>();
     private Map<String, String> TIMELINE_ID = new TreeMap<>(String::compareTo);
-    private Map<String, Extractor> MEDIA_EXTRACTOR = new HashMap<String, Extractor>() {{
+    private final Map<String, Extractor> MEDIA_EXTRACTOR = new HashMap<String, Extractor>() {{
         put("video", new VideoExtractor());
         put("photo", new PhotoExtractor());
     }};
@@ -110,7 +111,7 @@ public class TwidRunner implements CommandLineRunner {
         JSONObject user = getUserInfo(screenName);
         List<JSONObject> errors = user.getByPath("errors", List.class);
         if (CollUtil.isNotEmpty(errors)) {
-            logger.error("获取用户信息失败: {}",  JSONUtil.toJsonStr(errors));
+            logger.error("获取用户信息失败: {}", JSONUtil.toJsonStr(errors));
             return null;
         }
 
@@ -216,7 +217,7 @@ public class TwidRunner implements CommandLineRunner {
         parameter.put("screen_name", screenName);
 
         // 组织参数
-        String jsonStr = httpGet(url, ImmutableMap.<String, String> builder()
+        String jsonStr = httpGet(url, ImmutableMap.<String, String>builder()
             .put("variables", JSONUtil.toJsonStr(parameter))
             .build());
         return JSONUtil.parseObj(jsonStr);
@@ -245,8 +246,6 @@ public class TwidRunner implements CommandLineRunner {
         String csrf = strs.get(0);
         csrf = csrf.split("=")[1];
         csrf = StrUtil.replace(csrf, ";", StrUtil.EMPTY);
-
-
 
         String[] keyValuePairs = parameters.entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue()).toArray(String[]::new);
         String strQueryParam = String.join("&", keyValuePairs);
@@ -339,7 +338,7 @@ public class TwidRunner implements CommandLineRunner {
         JSONObject topTimeline = (JSONObject) map.get(TOP_TIMELINE);
         Map<String, List<String>> mediaUrls = (Map<String, List<String>>) map.get(MEDIA_URLS);
 
-        List<String> flatUrls = mediaUrls.values().stream().flatMap(Collection::stream).collect(Collectors.toList());
+        List<String> flatUrls = mediaUrls.values().stream().flatMap(Collection::stream).toList();
         int count = flatUrls.size();
         AtomicInteger indexAI = new AtomicInteger(0);
 
@@ -355,19 +354,25 @@ public class TwidRunner implements CommandLineRunner {
 
         logger.debug("{} - 开始下载媒体文件...", screenName);
         // 处理媒体文件URL，key是推文的创建日期，value是媒体文件URL集合
-        mediaUrls.entrySet().stream().parallel().forEach(entry -> {
-            String key = entry.getKey();
-            List<String> value = entry.getValue();
 
+        mediaUrls.forEach((key, value) -> {
             for (String url : value) {
                 Request request = new Request.Builder().url(url).get().build();
-                try {
-                    Response response = okHttpClient.newCall(request).execute();
+                okHttpClient.newCall(request).enqueue(new Callback() {
+                    @Override
+                    public void onFailure(@NotNull Call call, @NotNull IOException e) {
+                        logger.error("下载文件连接出错：url = {}, message = {}", call.request().url(), e.getMessage());
+                    }
 
-                    String filename = "";
-                    if (response.isSuccessful()) {
+                    @Override
+                    public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
+                        if (!response.isSuccessful()) {
+                            logger.error("下载文件连接出错：url = {}, code = {}, message = {}", response.request().url(), response.code(), response.message());
+                            return;
+                        }
+
+                        String filename = "";
                         try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
-
                             // 文件路径规则：用户名 / 推文创建时间 + 文件名 + 文件后缀
 
                             if (StringUtils.contains(url, "?")) {
@@ -389,13 +394,8 @@ public class TwidRunner implements CommandLineRunner {
                             logger.error("文件下载出错 - url: {}, filename: {}", url, filename);
                             logger.error(e.getMessage(), e);
                         }
-                    } else {
-                        logger.error("{} - 文件下载失败，status: {}, body: {}, URL：{}", screenName, response.code(), Objects.requireNonNull(response.body()).string(), url);
                     }
-                } catch (IOException e) {
-                    logger.error("文件下载出错 - uri: {}", url);
-                    throw new RuntimeException(e);
-                }
+                });
             }
         });
 
@@ -409,7 +409,7 @@ public class TwidRunner implements CommandLineRunner {
         try {
             Files.createDirectories(path.getParent());
             Files.deleteIfExists(path);
-            Files.write(path, jsonStr.getBytes(StandardCharsets.UTF_8));
+            Files.writeString(path, jsonStr);
         } catch (IOException e) {
             logger.error("用户信息写入失败 - " + e.getMessage(), e);
         }

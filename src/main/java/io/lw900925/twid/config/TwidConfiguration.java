@@ -9,7 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
@@ -63,7 +63,7 @@ public class TwidConfiguration {
      */
     @Bean
     public ConnectionPool pool() {
-        return new ConnectionPool(200, 5, TimeUnit.MINUTES);
+        return new ConnectionPool(200, 5, java.util.concurrent.TimeUnit.MINUTES);
     }
 
     @Bean
@@ -72,8 +72,8 @@ public class TwidConfiguration {
         builder.sslSocketFactory(sslSocketFactory(), x509TrustManager());
         builder.retryOnConnectionFailure(false); //是否开启缓存
         builder.connectionPool(pool()); //连接池
-        builder.connectTimeout(10L, TimeUnit.SECONDS);
-        builder.readTimeout(10L, TimeUnit.SECONDS);
+        builder.connectTimeout(Duration.ofSeconds(10));
+        builder.readTimeout(Duration.ofSeconds(10));
         // 代理
         TwidProperties.Twitter.Proxy proxy = properties.getTwitter().getProxy();
         if (proxy != null) {
