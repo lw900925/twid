@@ -6,11 +6,11 @@
 
 ## 如何使用
 
-这个工具用Java语言编写，请先安装Java运行环境（Java Runtime Environment），不会的自己Baidu / Google一下，很简单。
+这个工具用Java语言编写，请先安装Java运行环境（Java Runtime Environment），不会的自己Baidu / Google一下，很简单，推荐Java 17或更高版本。
 
 在使用之前，你需要准备以下几样东西：
 
-1. 访问Twitter API的Access Token（可以用自己账号的Token，PC浏览器登录Twitter后按F12键，刷新一下页面，左侧栏出现请求，随便点开一个请求，可以看到请求头部Authorization，将里面的Beare Token拷贝出来）。
+1. 访问Twitter的Cookie，使用浏览器开发者工具（F12）获取。 
 2. 梯子工具（访问Twitter需要科学上网）。
 
 ### 1.从源码构建
@@ -44,7 +44,13 @@ java -jar app.jar
 3. 编辑`/config/list.txt`文件，填入要下载的推主用户名（注意是用户名，不是昵称，就是screen_name，浏览器地址栏后面那部分，比如https://twitter.com/lw900925 ，lw900925就是用户名），如果要下载多个推主，请每一行填一个。
 4. Windows双击运行`start.bat`，Linux / macOS在终端下执行`start.sh`文件即可启动下载，下载的媒体文件将会放在downloads目录下。
 5. 下载过程中如需停止，请按`Ctrl + C`键。
-6. 工具本身支持多线程下载，下载速度取决于你的带宽速率以及梯子的稳定性。
+6. 工具本身支持多线程下载，下载速度取决于你的CPU性能，带宽速率以及梯子的稳定性。
+
+## 关于抓取
+
+1. 工具默认支持锁推用户抓取，前提是，你的账号要关注这个锁推的用户。
+2. 支持增量抓取，即第一次抓取全部用户数据，之后抓取从上次抓取最后一条推文开始。如需要全量抓取，请在`cache/timeline_id.json`文件下找到指定用户并删除。
+
 
 ## 最后
 
