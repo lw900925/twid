@@ -1,11 +1,11 @@
 package io.lw900925.twid.exactor;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
 
 public class VideoExtractor implements Extractor {
 
@@ -24,14 +24,14 @@ public class VideoExtractor implements Extractor {
             List<Long> bitrates = variants.stream()
                 .map(it -> it.getByPath("bitrate", Long.class))
                 .sorted(Comparator.reverseOrder())
-                .collect(Collectors.toList());
+                .toList();
             // 按照比特率分组
             Map<Long, List<JSONObject>> variantsGroup = variants.stream().collect(Collectors.groupingBy(it -> it.getByPath("bitrate", Long.class)));
             // 首选获得比特率最大的视频
             for (Long bitrate : bitrates) {
                 List<JSONObject> bitrateVariants = variantsGroup.get(bitrate);
                 url = bitrateVariants.stream().map(it -> it.getByPath("url", String.class)).findFirst().orElse("");
-                if (StringUtils.isNotBlank(url)) {
+                if (StrUtil.isNotBlank(url)) {
                     break;
                 }
             }

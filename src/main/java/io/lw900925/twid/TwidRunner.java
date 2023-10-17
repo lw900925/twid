@@ -1,6 +1,7 @@
 package io.lw900925.twid;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.lang.TypeReference;
 import cn.hutool.core.net.URLEncodeUtil;
@@ -24,17 +25,19 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -43,9 +46,6 @@ import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.time.DateFormatUtils;
-import org.apache.commons.lang3.time.DateUtils;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,6 +95,10 @@ public class TwidRunner implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         for (String screenName : LIST) {
+            if (screenName.startsWith("#")) {
+                continue;
+            }
+
             // step1.获取推文
             Map<String, Object> map = getTimelines(screenName);
 
@@ -294,31 +298,23 @@ public class TwidRunner implements CommandLineRunner {
             for (JSONObject timeline : timelines) {
                 JSONObject result = getResult(timeline).getByPath("legacy", JSONObject.class);
                 String strCreatedAt = result.getByPath("created_at", String.class);
-                try {
-                    String strPrettyCreationDate = DateFormatUtils.format(DateUtils.parseDate(strCreatedAt, Locale.US, DATE_PATTERN), "yyyyMMdd_HHmmss");
+                String strPrettyCreationDate = DateUtil.format(DateUtil.parse(strCreatedAt, DATE_PATTERN, Locale.US), "yyyyMMdd_HHmmss");
+                JSONObject extendedEntities = result.getByPath("extended_entities", JSONObject.class);
+                if (extendedEntities != null) {
+                    List<JSONObject> media = extendedEntities.getByPath("media", List.class);
+                    if (CollUtil.isNotEmpty(media)) {
+                        List<String> urls = new ArrayList<>();
 
-                    JSONObject extendedEntities = result.getByPath("extended_entities", JSONObject.class);
-                    if (extendedEntities != null) {
-                        List<JSONObject> media = extendedEntities.getByPath("media", List.class);
-                        if (CollUtil.isNotEmpty(media)) {
-                            List<String> urls = new ArrayList<>();
-
-                            for (JSONObject mediaEntry : media) {
-                                String type = mediaEntry.getByPath("type", String.class);
-                                Extractor extractor = MEDIA_EXTRACTOR.get(type);
-                                if (extractor != null) {
-                                    urls.add(extractor.extract(mediaEntry));
-                                }
+                        for (JSONObject mediaEntry : media) {
+                            String type = mediaEntry.getByPath("type", String.class);
+                            Extractor extractor = MEDIA_EXTRACTOR.get(type);
+                            if (extractor != null) {
+                                urls.add(extractor.extract(mediaEntry));
                             }
-
-                            mediaUrls.put(strPrettyCreationDate, urls);
                         }
+
+                        mediaUrls.put(strPrettyCreationDate, urls);
                     }
-
-
-                } catch (ParseException e) {
-                    logger.debug("日期解析异常，creation_at: {}", strCreatedAt);
-                    logger.error(e.getMessage(), e);
                 }
             }
         }
@@ -330,7 +326,7 @@ public class TwidRunner implements CommandLineRunner {
     @SuppressWarnings("unchecked")
     public void download(Map<String, Object> map) {
 
-        if (map == null || ((List<JSONObject>) map.get(TIMELINES)).size() == 0) {
+        if (map == null || ((List<JSONObject>) map.get(TIMELINES)).isEmpty()) {
             return;
         }
 
@@ -346,54 +342,41 @@ public class TwidRunner implements CommandLineRunner {
         String screenName = userInfo.getByPath("legacy.screen_name", String.class);
 
         // 用户下载目录
-        String[] chars = {"<", ">", "/", "\\", "|", ":", "*", "?"};
-        if (StringUtils.containsAny(name, chars)) {
-            name = StringUtils.replaceEach(name, chars, new String[]{"", "", "", "", "", "", "", ""});
-        }
+        char[] chars = {'<', '>', '/', '\\', '|', ':', '*', '?'};
+        name = StrUtil.replaceChars(name, chars, StrUtil.EMPTY);
         Path downloadPath = Paths.get(properties.getLocation(), name + "@" + screenName);
 
         logger.debug("{} - 开始下载媒体文件...", screenName);
         // 处理媒体文件URL，key是推文的创建日期，value是媒体文件URL集合
 
-        mediaUrls.forEach((key, value) -> {
+        mediaUrls.entrySet().stream().parallel().forEach(entry -> {
+            String key = entry.getKey();
+            List<String> value = entry.getValue();
+
             for (String url : value) {
-                Request request = new Request.Builder().url(url).get().build();
-                okHttpClient.newCall(request).enqueue(new Callback() {
-                    @Override
-                    public void onFailure(@NotNull Call call, @NotNull IOException e) {
-                        logger.error("下载文件连接出错：url = {}, message = {}", call.request().url(), e.getMessage());
-                    }
+                httpDownload(url, 3, response -> {
+                    String filename = "";
+                    try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
+                        // 文件路径规则：用户名 / 推文创建时间 + 文件名 + 文件后缀
 
-                    @Override
-                    public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
-                        if (!response.isSuccessful()) {
-                            logger.error("下载文件连接出错：url = {}, code = {}, message = {}", response.request().url(), response.code(), response.message());
-                            return;
+                        if (StrUtil.contains(url, "?")) {
+                            filename = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("?"));
+                        } else {
+                            filename = url.substring(url.lastIndexOf("/") + 1);
                         }
+                        filename = key + "_" + filename;
+                        Path path = Paths.get(downloadPath.toString(), filename);
 
-                        String filename = "";
-                        try (InputStream inputStream = Objects.requireNonNull(response.body()).byteStream()) {
-                            // 文件路径规则：用户名 / 推文创建时间 + 文件名 + 文件后缀
+                        // 创建目录并保存文件
+                        Files.createDirectories(path.getParent());
+                        Files.copy(inputStream, path);
 
-                            if (StringUtils.contains(url, "?")) {
-                                filename = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("?"));
-                            } else {
-                                filename = url.substring(url.lastIndexOf("/") + 1);
-                            }
-                            filename = key + "_" + filename;
-                            Path path = Paths.get(downloadPath.toString(), filename);
-
-                            // 创建目录并保存文件
-                            Files.createDirectories(path.getParent());
-                            Files.copy(inputStream, path);
-
-                            logger.debug("{} - 第[{}/{}]个文件下载完成：{}", screenName, indexAI.incrementAndGet(), count, path);
-                        } catch (FileAlreadyExistsException e) {
-                            logger.debug("{} - 第[{}/{}]个文件已存在，跳过下载", screenName, indexAI.incrementAndGet(), count);
-                        } catch (Exception e) {
-                            logger.error("文件下载出错 - url: {}, filename: {}", url, filename);
-                            logger.error(e.getMessage(), e);
-                        }
+                        logger.debug("{} - 第[{}/{}]个文件下载完成：{}", screenName, indexAI.incrementAndGet(), count, path);
+                    } catch (FileAlreadyExistsException e) {
+                        logger.debug("{} - 第[{}/{}]个文件[{}]已存在，跳过下载", screenName, indexAI.incrementAndGet(), count, filename);
+                    } catch (Exception e) {
+                        logger.error("文件下载出错 - url: {}, filename: {}", url, filename);
+                        logger.error(e.getMessage(), e);
                     }
                 });
             }
@@ -427,6 +410,27 @@ public class TwidRunner implements CommandLineRunner {
         }
 
         throw new RuntimeException(String.format("获取timeline内容失败：\n%s", JSONUtil.toJsonPrettyStr(timeline)));
+    }
+
+    public void httpDownload(String url, int maxRetry, Consumer<Response> action) {
+        if (maxRetry <= 0) {
+            return;
+        }
+
+        try {
+            Request request = new Request.Builder().url(url).get().build();
+            Response response = okHttpClient.newCall(request).execute();
+            if (!response.isSuccessful()) {
+                logger.error("下载文件连接出错：url = {}, code = {}, message = {}, 剩余重试次数 = {}", response.request().url(), response.code(), response.message(), maxRetry);
+                httpDownload(url, maxRetry - 1, action);
+            }
+
+            // 交给外部实现
+            action.accept(response);
+        } catch (IOException e) {
+            logger.error("下载文件连接出错：url = {}, message = {}，剩余重试次数 = {}", url, e.getMessage(), maxRetry);
+            httpDownload(url, maxRetry - 1, action);
+        }
     }
 
     @PreDestroy
