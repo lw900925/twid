@@ -168,7 +168,12 @@ public class TwidRunner implements CommandLineRunner {
                     continue;
                 }
 
-                String timelineId = getResult(timelineEntry).getByPath("rest_id", String.class);
+                JSONObject result = getResult(timelineEntry);
+                if (result == null || result.isEmpty()) {
+                    continue;
+                }
+
+                String timelineId = result.getByPath("rest_id", String.class);
                 String lastTimelineId = TIMELINE_ID.get(screenName.toLowerCase());
                 if (StrUtil.isNotBlank(lastTimelineId) && lastTimelineId.equals(timelineId)) {
                     // 本次抓取结果中是否包含上次最新的一条媒体推文，如果是，后面的timeline就不用再处理了
@@ -406,6 +411,11 @@ public class TwidRunner implements CommandLineRunner {
 
         result = timeline.getByPath("content.itemContent.tweet_results.result.tweet", JSONObject.class);
         if (result != null && result.containsKey("legacy")) {
+            return result;
+        }
+
+        result = timeline.getByPath("content.itemContent.tweet_results", JSONObject.class);
+        if (result == null || result.isEmpty()) {
             return result;
         }
 
